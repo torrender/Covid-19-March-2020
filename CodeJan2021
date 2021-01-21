@@ -1,0 +1,160 @@
+mport pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+#loading loading weather data
+weatherAndCases = pd.read_csv('training_data_with_weather_info_week_4.csv')
+weatherAndCases.head()
+
+#loading testing data 
+covidTestingData = pd.read_csv('owid-covid-data.csv')
+covidTestingData.head()
+
+#poplulation data 
+populationdata = pd.read_csv('WPP2019_TotalPopulationBySex.csv')
+populationdata.head()
+
+# all of our data is in 2020 and some columns are superflous 
+populationdata = populationdata[populationdata['Time']==2020]
+populationdata = populationdata[['Location','Time','PopMale','PopFemale','PopTotal','PopDensity']]
+populationdata = populationdata.drop_duplicates()
+populationdata.head()
+
+#join the population and testing data
+populationAndTesting = populationdata.merge(covidTestingData, left_on='Location', right_on='location')
+populationAndTesting.head()
+populationAndTesting.dtypes
+populationAndTesting.head()
+
+#clearly some countries dont match up so lets fix that
+print(len(populationdata['Location'].unique()))
+print(len(covidTestingData['location'].unique()))
+print(len(populationAndTesting['Location'].unique()))
+print(set(covidTestingData['location'])-set(populationAndTesting['Location']))
+
+#most of these we can disregard since they are pretty small countries we wont use in our analyssi
+#but some countries we cant look past
+#United States, Hong Kong, Bolivia, Russia, etc.. 
+#we will have to do a map and transform on these data points
+
+def changecountryname(x):
+    countryMap = {"United States of America":"United States",
+             "China, Hong Kong SAR": "Hong Kong",
+             "Bolivia (Plurinational State of)":"Bolivia",
+             "Russian Federation":"Russia",
+             "Viet Nam": "Vietnam",
+             "China, Taiwan Province of China":"Taiwan",
+             "Iran (Islamic Republic of)":"Iran",
+             "Republic of Korea":"South Korea",
+             "United Republic of Tanzania": "Tanzania",
+             "Czechia":"Czech Republic",
+             "Democratic Republic of the Congo":"Democratic Republic of Congo",
+             "Syrian Arab Republic":"Syria",
+             "Venezuela (Bolivarian Republic of)":"Venezuela"}
+    if x in countryMap.keys():
+        return countryMap[x]
+    else:
+        return x
+populationdata['New_Country_Code'] = populationdata.Location.apply(lambda x: changecountryname(x))
+
+populationdata.head()
+
+#join the population and testing data
+populationAndTesting = populationdata.merge(covidTestingData, left_on='New_Country_Code', right_on='location')
+populationAndTesting.head()
+
+#Test new missing set
+print(set(covidTestingData['location'])-set(populationAndTesting['New_Country_Code']))
+
+populationAndTesting.dtypes
+
+#the weather data we're good with but we will be adding some 
+#population information to standardize our points
+populationandweather = populationdata.merge(weatherAndCases, left_on='New_Country_Code', right_on='Country_Region')
+populationandweather.head()
+
+#clearly some countries dont match up so lets fix that
+print(len(populationdata['Location'].unique()))
+print(len(weatherAndCases['Country_Region'].unique()))
+print(len(populationandweather['Location'].unique()))
+print(set(weatherAndCases['Country_Region'])-set(populationandweather['New_Country_Code']))
+
+#diamond princess and MS Zaandam are a cruise liners so we obvioulsy dont need that
+#from this list to simplify things we're only going to change the some of the countries
+
+def changecountryname2(x):
+    countryMap = {
+        "United States":"US",
+        "Taiwan":"Taiwan*",
+        "South Korea":"Korea, South",
+        "Czech Republic":"Czechia"}
+    if x in countryMap.keys():
+        return countryMap[x]
+    else:
+        return x
+populationdata['New_Country_Code_Weather'] = populationdata.New_Country_Code.apply(lambda x: changecountryname2(x))
+
+#the weather data we're good with but we will be adding some 
+#population information to standardize our points
+populationandweather = populationdata.merge(weatherAndCases, left_on='New_Country_Code_Weather', right_on='Country_Region')
+populationandweather.head()
+
+#clearly some countries dont match up so lets fix that
+print(len(populationdata['Location'].unique()))
+print(len(weatherAndCases['Country_Region'].unique()))
+print(len(populationandweather['Location'].unique()))
+print(set(weatherAndCases['Country_Region'])-set(populationandweather['New_Country_Code_Weather']))
+
+Variable creation
+
+from dateutil import parser
+populationAndTesting['DTDate'] = populationAndTesting.date.apply(lambda x: parser.parse(x))
+populationAndTesting.head()
+
+populationAndTesting.dtypes
+
+populationAndTesting = populationAndTesting[['Location','PopTotal','PopDensity',
+                                             'total_cases','total_deaths',
+                                             'total_tests','DTDate']]
+                                             
+ax = sns.lineplot(x="DTDate", y="total_deaths", hue="Location",
+                  data=populationAndTesting)                                       
+
+populationAndTesting = populationAndTesting.sort_values(by='PopTotal', ascending=False)
+populationAndTesting.head()
+
+populationAndTestingWorld = populationAndTesting[populationAndTesting['Location']=='World']
+populationAndTesting = populationAndTesting[populationAndTesting['Location']!='World']
+populationAndTesting.head()
+
+topCountries = populationAndTesting.Location.unique()[:25]
+topCountries = np.concatenate((topCountries,['Sweden']))
+topCountries
+
+populationAndTestingTop = populationAndTesting[populationAndTesting['Location'].isin(topCountries)]
+populationAndTestingTop.head()
+
+Graph cleaner 
+ax = sns.lineplot(x="DTDate", y="total_deaths", hue="Location",
+                  data=populationAndTestingTop)
+plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+
+ax = sns.lineplot(x="DTDate", y="total_tests", hue="Location",
+                  data=populationAndTestingTop)
+plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+plt.figure(figsize=(18, 16), dpi= 80, facecolor='w', edgecolor='k')
+
+#lets control deaths and cases for tests
+populationAndTestingTop['deaths_per_test'] = populationAndTestingTop['total_deaths'] / populationAndTestingTop['total_tests']
+populationAndTestingTop.head()
+set(populationAndTestingTop.dropna().Location)
+
+ax = sns.lineplot(x="DTDate", y="deaths_per_test", hue="Location",
+                  data=populationAndTestingTop.dropna())
+plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+plt.figure(figsize=(18, 16), dpi= 80, facecolor='w', edgecolor='k')
+
+
+plt.figure(figsize=(18, 16), dpi= 80, facecolor='w', edgecolor='k')
+
